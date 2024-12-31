@@ -1,4 +1,367 @@
-﻿Міністерство освіти і науки УкраїниХарківський національний університет радіоелектроніки      Звітз лабораторної роботи №3з дисципліни «Аналіз та рефакторинг коду»      Виконала: Перевірив: ст. гр. ПЗПІ-22-8 ст. викл. каф. ПІ Шевченко О. О. Сокорчук І. П.      Харків 2024 ВСТУП  	Метою лабораторної роботи є розробка бізнес-логіки та функцій адміністрування серворної частини програмної системи: «Програмна система для контролю доступу до лабораторій».      Хід даної роботи має такий вигляд:   1. Опис інженерних рішень.  1.1  Адміністрування.  1.2  Бізнес-логіка.  2. Додатки.
-1 ОПИС ІНЖЕНЕРНИХ РІШЕНЬ               1.1 Адміністрування          Для даної програмної системи визначені дві групи користувачів: співробітники лабораторії та адміністратори системи. При авторизації відбувається перевірка, в процесі якої визначається відповідна роль користувача за вказаною посадою (поле «occupation_id» в табл. «Users»). Важливість даного функціонального рішення полягає в необхідності розділити функціонал, який може бути доступним різним користувачам. Відповідно, адміністрування включає:      – керування користувачами: реєстрація, редагування інформації та видалення користувачей. Співробітникам лабораторії доступний лише перегляд власного «профілю»;      – керування лабораторіями: реєстрація, редагування інформації та видалення лабораторій. Співробітникам лабораторії доступний лише перегляд списку існуючих лабораторій з метою створення запиту на отримання доступу до них;      – керування запитами: перегляд історії усіх створених запитів, генерування звітів про події доступу. Співробітникам лабораторії доступна лише власна історія запитів;      – керування сенсорами: перегляд, створення та видалення сенсорів для перевірки особи користувачів при отриманні доступу.1.3  Бізнес-логіка     Серверна частина програмної системи виконує обробку біометричних даних користувача, які використовуються для підтвердження особи при створенні запиту на отримання доступу до лабораторії. Бізнес-логіка базується на обробці цих даних (змісту сенсорів) для схвалення запиту та надання доступу співробітнику лабораторії.      Аналіз даних включає:– рівень доступу співробітника;– відповідність біометричних даних співробітника;– час створення запиту.     Для збереження інформації про запит (подію доступу) буде використано табл. «AccessEvents», для збереження інформації про сенсор первірки користувача – табл. «Sensors».      Для розрахунків використано такі математичні методи обробки даних:      – хешування паролів (з використанням алгоритму bcrypt);      – косинусна подібність для перевірки біометричних даних: біометричні дані співробітників представляються у вигляді векторів. Для перевірки відповідності даних, отриманих від сенсора, з даними, що зберігаються у базі, використовується косинусна подібність:подібність=(a ⃗b ⃗)/‖a ⃗ ‖‖b ⃗ ‖   , де      А – вектор біометричних даних з бази,      В – вектор, отриманий з сенсора.      – аналіз часових обмежень: система порівнює час створення запиту із розкладом лабораторії. Запит схвалюється, якщо час входу співробітника знаходиться у дозволеному діапазоні:access_granted = (t current ​≥ t open​) ∧ (t current​ ≤ t close​) , де          t current – час створення запиту,     t open,  t close  – час відкриття та закриття лабораторії.      	Діаграму взаємодії серверної частини програмної системи наведено на рисунку 1.Рисунок 1 – Діаграма взаємодії серверної частини програмної системи	Діаграму активності серверної частини програмної системи наведено на рисунку 2.Рисунок 2 – Діаграма активності серверної частини програмної системиВИСНОВКИ               В результаті виконання даної лабораторної роботи було розроблено бізнес-логіку та функції адміністрування серворної частини програмної системи. Створено зручний алгоритм для формування запитів на отримання доступу до лабораторій з автоматичною обробкою на основі даних про користувачів, лабораторії та сенсори для аутентифікації. Також реалізовано функції для управління інформацією про користувачів, лабораторії та події доступу. Функції адміністрування протестовані за допомогою інструменту тестування Postman.      Посилання на відео-захист: https://youtu.be/m4COB14AvQ8                     	 
-ДОДАТОК ААдміністрування
-# Додати нову лабораторію@labs_bp.route("/", methods=["POST"])@admin_requireddef create_lab():    try:        data = request.json        lab = Lab(            title=data["title"],            access_requirements=data["access_requirements"],            status_id=data["status_id"],        )        db.session.add(lab)        db.session.commit()        return jsonify({"message": "Lab created successfully!"}), 201    except Exception as e:        return jsonify({"error": "Failed to create lab", "details": str(e)}), 500# Оновити дані лабораторії за ID@labs_bp.route("/<int:lab_id>", methods=["PUT"])@admin_requireddef update_lab(lab_id):    try:        lab = Lab.query.get(lab_id)        if not lab:            return jsonify({"error": "Lab not found"}), 404        data = request.json        lab.title = data.get("title", lab.title)        lab.access_requirements = data.get("access_requirements", lab.access_requirements)        lab.status_id = data.get("status_id", lab.status_id)        db.session.commit()        return jsonify({"message": "Lab updated successfully!"}), 200    except Exception as e:        return jsonify({"error": "Failed to update lab", "details": str(e)}), 500# Змінити статус лабораторії@labs_bp.route("/<int:lab_id>/update_status", methods=["PATCH"])@admin_requireddef update_lab_status(lab_id):    data = request.json    lab = Lab.query.get_or_404(lab_id)    new_status = LabStatus.query.get(data["status_id"])    if not new_status:        return jsonify({"error": "Invalid status_id"}), 400    lab.status_id = data["status_id"]    db.session.commit()    return jsonify({"message": f"Lab status updated to {new_status.type}!"})# Видалити лабораторію за ID@labs_bp.route("/<int:lab_id>", methods=["DELETE"])@admin_requireddef delete_lab(lab_id):    try:        lab = Lab.query.get(lab_id)        if not lab:            return jsonify({"error": "Lab not found"}), 404        db.session.delete(lab)        db.session.commit()        return jsonify({"message": "Lab deleted successfully!"}), 200    except Exception as e:        return jsonify({"error": "Failed to delete lab", "details": str(e)}), 500# Отримати список усіх сенсорів@sensors_bp.route("/", methods=["GET"])@admin_requireddef get_sensors():    try:        sensors = Sensor.query.all()        sensors_list = [            {                "id": sensor.id,                "lab_id": sensor.lab_id,                "user_id": sensor.user_id,                "access_data": sensor.access_data,                "last_verified": sensor.timestamp,            }            for sensor in sensors        ]        return jsonify(sensors_list), 200    except Exception as e:        return jsonify({"error": "Failed to fetch sensors", "details": str(e)}), 500# Створити новий сенсор@sensors_bp.route("/", methods=["POST"])@admin_requireddef create_sensor():    try:        data = request.json        sensor = Sensor(            lab_id=data["lab_id"],            user_id=data["user_id"],            type=data["type"],            access_data=data["access_data"],        )        db.session.add(sensor)        db.session.commit()        return jsonify({"message": "Sensor created successfully!"}), 201    except Exception as e:        return jsonify({"error": "Failed to create sensor", "details": str(e)}), 500# Видалити сенсор за ID@sensors_bp.route("/<int:sensor_id>", methods=["DELETE"])@admin_requireddef delete_sensor(sensor_id):    try:        sensor = Sensor.query.get(sensor_id)        if not sensor:            return jsonify({"error": "Sensor not found"}), 404        db.session.delete(sensor)        db.session.commit()        return jsonify({"message": "Sensor deleted successfully!"}), 200    except Exception as e:        return jsonify({"error": "Failed to delete sensor", "details": str(e)}), 500# Отримати список усіх користувачів @users_bp.route("/", methods=["GET"])@admin_requireddef get_users():    try:        users = User.query.all()        users_list = [            {                "id": user.id,                "name": user.name,                "surname": user.surname,                "email": user.email,                "access_level": user.access_level,                "occupation_id": user.occupation_id,            }            for user in users        ]        return jsonify(users_list), 200    except Exception as e:        return jsonify({"error": "Failed to fetch users", "details": str(e)}), 500# Створення нового користувача @users_bp.route("/", methods=["POST"])@admin_requireddef create_user():    try:        data = request.json        hashed_password = generate_password_hash(data["password"], method="pbkdf2:sha256")        user = User(            name=data["name"],            surname=data["surname"],            email=data["email"],            password=hashed_password,  # Хешований пароль            access_level=data["access_level"],            occupation_id=data["occupation_id"],        )        db.session.add(user)        db.session.commit()        return jsonify({"message": "User created successfully!"}), 201    except Exception as e:        return jsonify({"error": "Failed to create user", "details": str(e)}), 500# Оновити дані користувача за ID@users_bp.route("/<int:user_id>", methods=["PUT"])@admin_requireddef update_user(user_id):    try:        user = User.query.get(user_id)        if not user:            return jsonify({"error": "User not found"}), 404        data = request.json        user.name = data.get("name", user.name)        user.surname = data.get("surname", user.surname)        user.email = data.get("email", user.email)        if "password" in data:            user.password = generate_password_hash(data["password"], method="pbkdf2:sha256")        db.session.commit()        return jsonify({"message": "User updated successfully!"}), 200    except Exception as e:        return jsonify({"error": "Failed to update user", "details": str(e)}), 500# Видалити користувача за ID @users_bp.route("/<int:user_id>", methods=["DELETE"])@admin_requireddef delete_user(user_id):    user = User.query.get(user_id)    if not user:        return jsonify({"message": "User not found!"}), 404    db.session.delete(user)    db.session.commit()    return jsonify({"message": "User deleted successfully!"})# Резервне копіювання бази даних@admin_bp.route("/backup", methods=["POST"])@admin_requireddef backup():    file_path = backup_database()    return jsonify({"message": "Backup created successfully!", "file": file_path}), 200# Експортує дані системи в JSON-файл@admin_bp.route("/export", methods=["GET"])@admin_requireddef export_data():    file_path = export_data_to_json()    return jsonify({"message": "Data exported successfully!", "file": file_path}), 200# Генерує звіт про події доступу@admin_bp.route("/report", methods=["GET"])@admin_requireddef generate_report():    file_path = generate_access_report()    return jsonify({"message": "Report generated successfully!", "file": file_path}), 200# Отримати всі події доступу @access_events_bp.route("/", methods=["GET"])@admin_requireddef get_access_events():    try:        events = AccessEvent.query.all()        events_list = [            {                "id": event.id,                "user_id": event.user_id,                "lab_id": event.lab_id,                "timestamp": event.timestamp,                "status": event.status,                "reason": event.reason,            }            for event in events        ]        return jsonify(events_list), 200    except Exception as e:        return jsonify({"error": "Failed to fetch access events", "details": str(e)}), 500# Створити запит після перевірки даних@access_events_bp.route("/", methods=["POST"])@login_requireddef create_access_event():    try:        data = request.json        user_id = session.get("user_id")        lab_id = data["lab_id"]        # Перевірка існування лабораторії        lab = Lab.query.get(lab_id)        if not lab:            return jsonify({"error": "Lab not found"}), 404        # Перевірка рівня доступу        user = User.query.get(user_id)        if user.access_level < lab.access_requirements:            return jsonify({"error": "Access level too low"}), 403        # Перевірка статусу лабораторії        if lab.status_id != 0:  # 0 означає "вільна"            return jsonify({"error": "Lab is not available"}), 403        # Перевірка біометричних даних через сенсор        sensor = Sensor.query.filter_by(lab_id=lab_id, user_id=user_id).first()        if not sensor:            reason = "Biometric sensor data not found"            status = "denied"        else:            reason = None            status = "approved"        # Створення події доступу        event = AccessEvent(            user_id=user_id,            lab_id=lab_id,            timestamp=datetime.utcnow(),            status=status,            reason=reason,        )        db.session.add(event)        db.session.commit()        return jsonify({"message": "Access event created", "event": {            "id": event.id,            "user_id": event.user_id,            "lab_id": event.lab_id,            "timestamp": event.timestamp,            "status": event.status,            "reason": event.reason,        }}), 201    except Exception as e:        return jsonify({"error": "Failed to create access event", "details": str(e)}), 500
+﻿Міністерство освіти і науки України
+Харківський національний університет радіоелектроніки
+ 
+ 
+ 
+ 
+ 
+ 
+Звіт
+з лабораторної роботи №3
+з дисципліни «Аналіз та рефакторинг коду»
+ 
+ 
+ 
+ 
+
+ 
+ 
+Виконала: 
+Перевірив: 
+ст. гр. ПЗПІ-22-8 
+ст. викл. каф. ПІ 
+Шевченко О. О. 
+Сокорчук І. П. 
+ 
+ 
+ 
+
+ 
+ 
+Харків 2024 
+
+
+ВСТУП 
+ 
+
+	Метою лабораторної роботи є розробка бізнес-логіки та функцій адміністрування серворної частини програмної системи: «Програмна система для контролю доступу до лабораторій». 
+     Хід даної роботи має такий вигляд: 
+  1. Опис інженерних рішень.
+  1.1  Адміністрування.
+  1.2  Бізнес-логіка.
+  2. Додатки.
+
+
+1 ОПИС ІНЖЕНЕРНИХ РІШЕНЬ
+     
+     
+     1.1 Адміністрування
+     
+     Для даної програмної системи визначені дві групи користувачів: співробітники лабораторії та адміністратори системи. При авторизації відбувається перевірка, в процесі якої визначається відповідна роль користувача за вказаною посадою (поле «occupation_id» в табл. «Users»). Важливість даного функціонального рішення полягає в необхідності розділити функціонал, який може бути доступним різним користувачам. Відповідно, адміністрування включає:
+      – керування користувачами: реєстрація, редагування інформації та видалення користувачей. Співробітникам лабораторії доступний лише перегляд власного «профілю»;
+      – керування лабораторіями: реєстрація, редагування інформації та видалення лабораторій. Співробітникам лабораторії доступний лише перегляд списку існуючих лабораторій з метою створення запиту на отримання доступу до них;
+      – керування запитами: перегляд історії усіх створених запитів, генерування звітів про події доступу. Співробітникам лабораторії доступна лише власна історія запитів;
+      – керування сенсорами: перегляд, створення та видалення сенсорів для перевірки особи користувачів при отриманні доступу.
+
+1.3  Бізнес-логіка
+
+     Серверна частина програмної системи виконує обробку біометричних даних користувача, які використовуються для підтвердження особи при створенні запиту на отримання доступу до лабораторії. Бізнес-логіка базується на обробці цих даних (змісту сенсорів) для схвалення запиту та надання доступу співробітнику лабораторії. 
+     Аналіз даних включає:
+– рівень доступу співробітника;
+– відповідність біометричних даних співробітника;
+– час створення запиту.
+     Для збереження інформації про запит (подію доступу) буде використано табл. «AccessEvents», для збереження інформації про сенсор первірки користувача – табл. «Sensors». 
+     Для розрахунків використано такі математичні методи обробки даних:
+      – хешування паролів (з використанням алгоритму bcrypt);
+      – косинусна подібність для перевірки біометричних даних: біометричні дані співробітників представляються у вигляді векторів. Для перевірки відповідності даних, отриманих від сенсора, з даними, що зберігаються у базі, використовується косинусна подібність:
+
+подібність=(a ⃗b ⃗)/‖a ⃗ ‖‖b ⃗ ‖   , де
+
+      А – вектор біометричних даних з бази,
+      В – вектор, отриманий з сенсора.
+
+      – аналіз часових обмежень: система порівнює час створення запиту із розкладом лабораторії. Запит схвалюється, якщо час входу співробітника знаходиться у дозволеному діапазоні:
+
+access_granted = (t current ​≥ t open​) ∧ (t current​ ≤ t close​) , де
+     
+     t current – час створення запиту,
+     t open,  t close  – час відкриття та закриття лабораторії. 
+     
+	Діаграму взаємодії серверної частини програмної системи наведено на рисунку 1.
+
+
+Рисунок 1 – Діаграма взаємодії серверної частини програмної системи
+
+	Діаграму активності серверної частини програмної системи наведено на рисунку 2.
+
+Рисунок 2 – Діаграма активності серверної частини програмної системи
+ВИСНОВКИ
+     
+     
+     В результаті виконання даної лабораторної роботи було розроблено бізнес-логіку та функції адміністрування серворної частини програмної системи. Створено зручний алгоритм для формування запитів на отримання доступу до лабораторій з автоматичною обробкою на основі даних про користувачів, лабораторії та сенсори для аутентифікації. Також реалізовано функції для управління інформацією про користувачів, лабораторії та події доступу. Функції адміністрування протестовані за допомогою інструменту тестування Postman. 
+     Посилання на відео-захист: https://youtu.be/m4COB14AvQ8 
+     
+     
+     
+     
+
+	 
+
+ДОДАТОК А
+Адміністрування
+
+
+
+1 # Додати нову лабораторію
+2 @labs_bp.route("/", methods=["POST"])
+3 @admin_required
+4 def create_lab():
+5     try:
+6         data = request.json
+7         lab = Lab(
+8             title=data["title"],
+9             access_requirements=data["access_requirements"],
+10             status_id=data["status_id"],
+11         )
+12         db.session.add(lab)
+13         db.session.commit()
+14         return jsonify({"message": "Lab created successfully!"}), 201
+15     except Exception as e:
+16         return jsonify({"error": "Failed to create lab", "details": str(e)}), 500
+17 # Оновити дані лабораторії за ID
+18 @labs_bp.route("/<int:lab_id>", methods=["PUT"])
+19 @admin_required
+20 def update_lab(lab_id):
+21     try:
+22         lab = Lab.query.get(lab_id)
+23         if not lab:
+24             return jsonify({"error": "Lab not found"}), 404
+25 
+26         data = request.json
+27         lab.title = data.get("title", lab.title)
+28         lab.access_requirements = data.get("access_requirements", lab.access_requirements)
+29         lab.status_id = data.get("status_id", lab.status_id)
+30         db.session.commit()
+31         return jsonify({"message": "Lab updated successfully!"}), 200
+32     except Exception as e:
+33         return jsonify({"error": "Failed to update lab", "details": str(e)}), 500
+34 # Змінити статус лабораторії
+35 @labs_bp.route("/<int:lab_id>/update_status", methods=["PATCH"])
+36 @admin_required
+37 def update_lab_status(lab_id):
+38     data = request.json
+39     lab = Lab.query.get_or_404(lab_id)
+40     new_status = LabStatus.query.get(data["status_id"])
+41     if not new_status:
+42         return jsonify({"error": "Invalid status_id"}), 400
+43     lab.status_id = data["status_id"]
+44     db.session.commit()
+45     return jsonify({"message": f"Lab status updated to {new_status.type}!"})
+46 
+47 # Видалити лабораторію за ID
+48 @labs_bp.route("/<int:lab_id>", methods=["DELETE"])
+49 @admin_required
+50 def delete_lab(lab_id):
+51     try:
+52         lab = Lab.query.get(lab_id)
+53         if not lab:
+54             return jsonify({"error": "Lab not found"}), 404
+55 
+56         db.session.delete(lab)
+57         db.session.commit()
+58         return jsonify({"message": "Lab deleted successfully!"}), 200
+59     except Exception as e:
+60         return jsonify({"error": "Failed to delete lab", "details": str(e)}), 500
+61 # Отримати список усіх сенсорів
+62 @sensors_bp.route("/", methods=["GET"])
+63 @admin_required
+64 def get_sensors():
+65     try:
+66         sensors = Sensor.query.all()
+67         sensors_list = [
+68             {
+69                 "id": sensor.id,
+70                 "lab_id": sensor.lab_id,
+71                 "user_id": sensor.user_id,
+72                 "access_data": sensor.access_data,
+73                 "last_verified": sensor.timestamp,
+74             }
+75             for sensor in sensors
+76         ]
+77         return jsonify(sensors_list), 200
+78     except Exception as e:
+79         return jsonify({"error": "Failed to fetch sensors", "details": str(e)}), 500
+80 # Створити новий сенсор
+81 @sensors_bp.route("/", methods=["POST"])
+82 @admin_required
+83 def create_sensor():
+84     try:
+85         data = request.json
+86         sensor = Sensor(
+87             lab_id=data["lab_id"],
+88             user_id=data["user_id"],
+89             type=data["type"],
+90             access_data=data["access_data"],
+91         )
+92         db.session.add(sensor)
+93         db.session.commit()
+94         return jsonify({"message": "Sensor created successfully!"}), 201
+95     except Exception as e:
+96         return jsonify({"error": "Failed to create sensor", "details": str(e)}), 500
+97 # Видалити сенсор за ID
+98 @sensors_bp.route("/<int:sensor_id>", methods=["DELETE"])
+99 @admin_required
+100 def delete_sensor(sensor_id):
+101     try:
+102         sensor = Sensor.query.get(sensor_id)
+103         if not sensor:
+104             return jsonify({"error": "Sensor not found"}), 404
+105 
+106         db.session.delete(sensor)
+107         db.session.commit()
+108         return jsonify({"message": "Sensor deleted successfully!"}), 200
+109     except Exception as e:
+110         return jsonify({"error": "Failed to delete sensor", "details": str(e)}), 500
+111 # Отримати список усіх користувачів 
+112 @users_bp.route("/", methods=["GET"])
+113 @admin_required
+114 def get_users():
+115     try:
+116         users = User.query.all()
+117         users_list = [
+118             {
+119                 "id": user.id,
+120                 "name": user.name,
+121                 "surname": user.surname,
+122                 "email": user.email,
+123                 "access_level": user.access_level,
+124                 "occupation_id": user.occupation_id,
+125             }
+126             for user in users
+127         ]
+128         return jsonify(users_list), 200
+129     except Exception as e:
+130         return jsonify({"error": "Failed to fetch users", "details": str(e)}), 500
+131 # Створення нового користувача 
+132 @users_bp.route("/", methods=["POST"])
+133 @admin_required
+134 def create_user():
+135     try:
+136         data = request.json
+137         hashed_password = generate_password_hash(data["password"], method="pbkdf2:sha256")
+138         user = User(
+139             name=data["name"],
+140             surname=data["surname"],
+141             email=data["email"],
+142             password=hashed_password,  # Хешований пароль
+143             access_level=data["access_level"],
+144             occupation_id=data["occupation_id"],
+145         )
+146         db.session.add(user)
+147         db.session.commit()
+148         return jsonify({"message": "User created successfully!"}), 201
+149     except Exception as e:
+150         return jsonify({"error": "Failed to create user", "details": str(e)}), 500
+151 # Оновити дані користувача за ID
+152 @users_bp.route("/<int:user_id>", methods=["PUT"])
+153 @admin_required
+154 def update_user(user_id):
+155     try:
+156         user = User.query.get(user_id)
+157         if not user:
+158             return jsonify({"error": "User not found"}), 404
+159         data = request.json
+160         user.name = data.get("name", user.name)
+161         user.surname = data.get("surname", user.surname)
+162         user.email = data.get("email", user.email)
+163         if "password" in data:
+164             user.password = generate_password_hash(data["password"], method="pbkdf2:sha256")
+165         db.session.commit()
+166         return jsonify({"message": "User updated successfully!"}), 200
+167     except Exception as e:
+168         return jsonify({"error": "Failed to update user", "details": str(e)}), 500
+169 # Видалити користувача за ID 
+170 @users_bp.route("/<int:user_id>", methods=["DELETE"])
+171 @admin_required
+172 def delete_user(user_id):
+173     user = User.query.get(user_id)
+174     if not user:
+175         return jsonify({"message": "User not found!"}), 404
+176     db.session.delete(user)
+177     db.session.commit()
+178     return jsonify({"message": "User deleted successfully!"})
+179 # Резервне копіювання бази даних
+180 @admin_bp.route("/backup", methods=["POST"])
+181 @admin_required
+182 def backup():
+183     file_path = backup_database()
+184     return jsonify({"message": "Backup created successfully!", "file": file_path}), 200
+185 # Експортує дані системи в JSON-файл
+186 @admin_bp.route("/export", methods=["GET"])
+187 @admin_required
+188 def export_data():
+189     file_path = export_data_to_json()
+190     return jsonify({"message": "Data exported successfully!", "file": file_path}), 200
+191 # Генерує звіт про події доступу
+192 @admin_bp.route("/report", methods=["GET"])
+193 @admin_required
+194 def generate_report():
+195     file_path = generate_access_report()
+196     return jsonify({"message": "Report generated successfully!", "file": file_path}), 200
+197 # Отримати всі події доступу 
+198 @access_events_bp.route("/", methods=["GET"])
+199 @admin_required
+200 def get_access_events():
+201     try:
+202         events = AccessEvent.query.all()
+203         events_list = [
+204             {
+205                 "id": event.id,
+206                 "user_id": event.user_id,
+207                 "lab_id": event.lab_id,
+208                 "timestamp": event.timestamp,
+209                 "status": event.status,
+210                 "reason": event.reason,
+211             }
+212             for event in events
+213         ]
+214         return jsonify(events_list), 200
+215     except Exception as e:
+216         return jsonify({"error": "Failed to fetch access events", "details": str(e)}), 500
+217 # Створити запит після перевірки даних
+218 @access_events_bp.route("/", methods=["POST"])
+219 @login_required
+220 def create_access_event():
+221     try:
+222         data = request.json
+223         user_id = session.get("user_id")
+224         lab_id = data["lab_id"]
+225         # Перевірка існування лабораторії
+226         lab = Lab.query.get(lab_id)
+227         if not lab:
+228             return jsonify({"error": "Lab not found"}), 404
+229         # Перевірка рівня доступу
+230         user = User.query.get(user_id)
+231         if user.access_level < lab.access_requirements:
+232             return jsonify({"error": "Access level too low"}), 403
+233         # Перевірка статусу лабораторії
+234         if lab.status_id != 0:  # 0 означає "вільна"
+235             return jsonify({"error": "Lab is not available"}), 403
+236         # Перевірка біометричних даних через сенсор
+237         sensor = Sensor.query.filter_by(lab_id=lab_id, user_id=user_id).first()
+238         if not sensor:
+239             reason = "Biometric sensor data not found"
+240             status = "denied"
+241         else:
+242             reason = None
+243             status = "approved"
+244         # Створення події доступу
+245         event = AccessEvent(
+246             user_id=user_id,
+247             lab_id=lab_id,
+248             timestamp=datetime.utcnow(),
+249             status=status,
+250             reason=reason,
+251         )
+252         db.session.add(event)
+253         db.session.commit()
+254         return jsonify({"message": "Access event created", "event": {
+255             "id": event.id,
+256             "user_id": event.user_id,
+257             "lab_id": event.lab_id,
+258             "timestamp": event.timestamp,
+259             "status": event.status,
+260             "reason": event.reason,
+261         }}), 201
+262     except Exception as e:
+263         return jsonify({"error": "Failed to create access event", "details": str(e)}), 500
