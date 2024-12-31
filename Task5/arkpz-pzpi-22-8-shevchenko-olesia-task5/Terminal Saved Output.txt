@@ -1,0 +1,53 @@
+Last login: Fri Dec 27 09:50:24 on console
+olesiashevchenko@Olesias-MacBook-Air ~ % export SECRET_KEY="9b1f9d93d6e94299a9b8a9f6d12f1eaf"
+olesiashevchenko@Olesias-MacBook-Air ~ % export SECRET_KEY="9b1f9d93d6e94299a9b8a9f6d12f1eaf"
+olesiashevchenko@Olesias-MacBook-Air ~ % echo $SECRET_KEY
+9b1f9d93d6e94299a9b8a9f6d12f1eaf
+olesiashevchenko@Olesias-MacBook-Air ~ % nano ~/.zshrc
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  UW PICO 5.09                              File: /Users/olesiashevchenko/.zshrc                               Modified  
+
+export SECRET_KEY="9b1f9d93d6e94299a9b8a9f6d12f1eaf"
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+^G Get Help         ^O WriteOut         ^R Read File        ^Y Prev Pg          ^K Cut Text         ^C Cur Pos          
+^X Exit             ^J Justify          ^W Where is         ^V Next Pg          ^U UnCut Text       ^T To Spell         
