@@ -1,4 +1,238 @@
-﻿Міністерство освіти і науки УкраїниХарківський національний університет радіоелектроніки      Звітз лабораторної роботи №4з дисципліни «Аналіз та рефакторинг коду»      Виконала: Перевірив: ст. гр. ПЗПІ-22-8 ст. викл. каф. ПІ Шевченко О. О. Сокорчук І. П.      Харків 2024 ВСТУП  	Метою лабораторної роботи є розробка забезпечення для IoT або SmartDevice пристрою, створеного на базі будь-якої поширеної на сьогодні платформи, придатної для реалізації вбудованих систем, для програмної системи: «Програмна система для контролю доступу до лабораторій».      Хід даної роботи має такий вигляд:   1. Опис інженерних рішень.1.1   Бізнес-логіка IoT-клієнта.1.2   Налаштування IoT-клієнта.  2 Додатки.
-1 ОПИС ІНЖЕНЕРНИХ РІШЕНЬ               Основою системи є інтеграція IoT-пристрою, серверної частини та бази даних для управління доступом до лабораторій. IoT-пристрій моделюється програмою, яка генерує цифрові «відбитки пальців» та взаємодіє із сервером через протокол MQTT. Серверна частина на Flask забезпечує обробку запитів, перевірку «відбитків» та логування подій доступу.      Для реалізації MQTT використовується брокер Mosquitto, який приймає та ретранслює повідомлення між IoT-пристроєм і сервером. Оскільки фізичне використання IoT-пристрою в даний момент є неможливим, імітація поведінки його програмного забезпечення написана на мові програмування Python. MQTT реалізовано за допомогою бібліотеки paho-mqtt, що дозволяє відправляти дані у тему sensors/fingerprint. Дані передаються у вигляді рядка символів, що імітує унікальний «відбиток пальця».1.2 Бізнес-логіка IoT-клієнта     IoT-пристрій автоматично генерує та відправляє «відбитки пальців» через MQTT-протокол у режимі реального часу. Сервер Flask отримує ці повідомлення, перевіряє їх у списку зареєстрованих «відбитків» і вирішує, чи надати доступ. Для HTTP-запитів розроблено API, яке дозволяє тестувати систему, створювати сенсори та управляти доступами. Основні ендпоінти: – /sensors/fingerprint для перевірки «відбитків» через HTTP. – /sensors/ для керування сенсорами.     Дані про події доступу зберігаються в базі даних PostgreSQL, що дозволяє вести журнал доступу до лабораторій.1.2 Налаштування IoT-клієнта          Ініціалізація MQTT: IoT-пристрій підключається до брокера Mosquitto, встановлює з’єднання та підписується на тему для прийому повідомлень.     Робота з Wi-Fi: IoT-пристрій автоматично перепідключається до мережі в разі втрати зв’язку.     Обробка MQTT повідомлень: Сервер отримує дані від IoT-пристрою та зберігає події доступу до бази даних. Якщо відбиток пальця не знайдено, доступ забороняється. Програмний код IoT-системи та код сервісу для роботи з MQTT наведено в додатку А.	Діаграму прецедентів IoT-клієнта, яка описує взаємодію користувача з програмною системою через пристрій, наведено на рисунку 1.Рисунок 1 – UML-діаграма прецедентів IoT-клієнта	Діаграму діяльності IoT-клієнта, яка описує процес роботи системи від генерації значень до їхньої реєстрації в БД, наведено на рисунку 2.Рисунок 2 – UML-діаграма діяльності IoT-клієнта          Діаграму компонентів, яка описує організацію й взаємозв'язок програмних компонентів, представлених у коді, наведено на рисунку 3.     Рисунок 3 – UML-діаграма компонентів системи          ВИСНОВКИ               В результаті виконання даної лабораторної роботи було розроблено IoT-клієнт для генерації та перевірки біометричних даних (відбитків пальців) співробітників лабораторії, який забезпечує автоматичне перепідключення IoT-пристрою до мереж та підтримує HTTP API для інтерактивної роботи з системою. Функції адміністрування протестовані за допомогою інструменту тестування Postman.      Посилання на відео-захист: https://youtu.be/waWE_5CHjBE                	 
-ДОДАТОК АПрограмний код IoT-клієнта
-@sensors_bp.route("/fingerprint", methods=["POST"])def verify_fingerprint():    data = request.json    fingerprint = data.get("access_data")    if not fingerprint:        return jsonify({"error": "No fingerprint data provided"}), 400    for user, registered_fingerprint in REGISTERED_FINGERPRINTS.items():        if fingerprint == registered_fingerprint:            return jsonify({"status": "approved", "user": user, "timestamp": datetime.now()}), 200    return jsonify({"status": "denied", "reason": "Fingerprint not recognized"}), 403# IoT-симулятор для генерації даних сенсорів та передачі їх через MQTTimport paho.mqtt.client as mqttimport jsonimport randomimport time# Конфігурація MQTTBROKER = "localhost"PORT = 1883TOPIC = "iot/sensor_data"# Користувачі та лабораторії для генерації данихUSERS = [1, 2, 3, 4]  # ID користувачівLABS = [1, 2, 3]      # ID лабораторій# Генерує випадковий вектор для відбитків пальцівdef generate_fingerprint():    return [random.randint(0, 255) for _ in range(128)]  # 128-елементний вектор# Генерує дані сенсора та відправляє їх через MQTTdef send_sensor_data(client):    user_id = random.choice(USERS)    lab_id = random.choice(LABS)    fingerprint = generate_fingerprint()    payload = {        "user_id": user_id,        "lab_id": lab_id,        "fingerprint": fingerprint    }    try:        client.publish(TOPIC, json.dumps(payload))        print(f"Sent data: {payload}")    except Exception as e:        print(f"Failed to send data: {e}")# Запуск симулятора IoTdef start_simulator():    client = mqtt.Client()    try:        client.connect(BROKER, PORT, 60)        print(f"Connected to MQTT broker at {BROKER}:{PORT}")    except Exception as e:        print(f"Failed to connect to MQTT broker: {e}")        return    client.loop_start()    try:        while True:            send_sensor_data(client)            time.sleep(5)  # Інтервал передачі даних (у секундах)    except KeyboardInterrupt:        print("Simulator stopped by user")    finally:        client.loop_stop()        client.disconnect()if __name__ == "__main__":    start_simulator()#серверfrom flask import Flask, request, jsonifyimport paho.mqtt.client as mqttfrom datetime import datetimeapp = Flask(__name__)REGISTERED_FINGERPRINTS = {    "user1": "abc123xyz789",    "user2": "def456uvw123"}BROKER = "localhost" PORT = 1883  TOPIC = "sensors/fingerprint"  def on_message(client, userdata, msg):    fingerprint = msg.payload.decode()    print(f"Received fingerprint from MQTT: {fingerprint}")    for user, registered_fingerprint in REGISTERED_FINGERPRINTS.items():        if fingerprint == registered_fingerprint:            print(f"Access granted for {user}")            return    print("Access denied: Fingerprint not recognized")def start_mqtt_client():    client = mqtt.Client("FlaskMQTTServer")    client.on_message = on_message    client.connect(BROKER, PORT, 60)    client.subscribe(TOPIC)    client.loop_start()@app.route('/')def index():    return "Flask Server with MQTT is running!"if __name__ == "__main__":    start_mqtt_client()    app.run(host="0.0.0.0", port=5000)# Модуль для обробки MQTT-повідомленьimport paho.mqtt.client as mqttimport jsonfrom models import db, Sensorfrom datetime import datetime# Конфігурація MQTTBROKER = "localhost"PORT = 1883TOPIC = "iot/sensor_data"# Функція викликається при підключенні до брокераdef on_connect(client, userdata, flags, rc):    if rc == 0:        print("MQTT connected successfully")        client.subscribe(TOPIC)        print(f"Subscribed to topic: {TOPIC}")    else:        print(f"Failed to connect to MQTT broker. Return code: {rc}")# Функція обробляє вхідні повідомлення з топікаdef on_message(client, userdata, msg):    try:        # Розбір повідомлення        payload = json.loads(msg.payload.decode("utf-8"))        user_id = payload["user_id"]        lab_id = payload["lab_id"]        fingerprint = payload["fingerprint"]        # Пошук відповідного сенсора в базі        sensor = Sensor.query.filter_by(user_id=user_id, lab_id=lab_id).first()        if not sensor:            print(f"Sensor not found for user {user_id} in lab {lab_id}")            return        # Порівняння векторів відбитків        if fingerprint != json.loads(sensor.fingerprint_data):            print(f"Fingerprint mismatch for user {user_id}")            return        # Оновлення часу перевірки сенсора        sensor.last_verified = datetime.utcnow()        db.session.commit()        print(f"Sensor verified successfully for user {user_id} in lab {lab_id}")    except json.JSONDecodeError:        print("Invalid JSON received")    except Exception as e:        print(f"Error processing message: {e}")# Запуск MQTT-клієнтаdef start_mqtt_client():    client = mqtt.Client()    client.on_connect = on_connect    client.on_message = on_message    try:        client.connect(BROKER, PORT, 60)        print(f"Connected to MQTT broker at {BROKER}:{PORT}")        client.loop_start()    except Exception as e:        print(f"Failed to connect to MQTT broker: {e}")
+﻿Міністерство освіти і науки України
+Харківський національний університет радіоелектроніки
+ 
+ 
+ 
+ 
+ 
+ 
+Звіт
+з лабораторної роботи №4
+з дисципліни «Аналіз та рефакторинг коду»
+ 
+ 
+ 
+ 
+
+ 
+ 
+Виконала: 
+Перевірив: 
+ст. гр. ПЗПІ-22-8 
+ст. викл. каф. ПІ 
+Шевченко О. О. 
+Сокорчук І. П. 
+ 
+ 
+ 
+
+ 
+ 
+Харків 2024 
+
+
+ВСТУП 
+ 
+
+	Метою лабораторної роботи є розробка забезпечення для IoT або SmartDevice пристрою, створеного на базі будь-якої поширеної на сьогодні платформи, придатної для реалізації вбудованих систем, для програмної системи: «Програмна система для контролю доступу до лабораторій». 
+     Хід даної роботи має такий вигляд: 
+  1. Опис інженерних рішень.
+1.1   Бізнес-логіка IoT-клієнта.
+1.2   Налаштування IoT-клієнта.
+  2 Додатки.
+
+
+1 ОПИС ІНЖЕНЕРНИХ РІШЕНЬ
+     
+     
+     Основою системи є інтеграція IoT-пристрою, серверної частини та бази даних для управління доступом до лабораторій. IoT-пристрій моделюється програмою, яка генерує цифрові «відбитки пальців» та взаємодіє із сервером через протокол MQTT. Серверна частина на Flask забезпечує обробку запитів, перевірку «відбитків» та логування подій доступу. 
+     Для реалізації MQTT використовується брокер Mosquitto, який приймає та ретранслює повідомлення між IoT-пристроєм і сервером. Оскільки фізичне використання IoT-пристрою в даний момент є неможливим, імітація поведінки його програмного забезпечення написана на мові програмування Python. MQTT реалізовано за допомогою бібліотеки paho-mqtt, що дозволяє відправляти дані у тему sensors/fingerprint. Дані передаються у вигляді рядка символів, що імітує унікальний «відбиток пальця».
+
+1.2 Бізнес-логіка IoT-клієнта
+
+     IoT-пристрій автоматично генерує та відправляє «відбитки пальців» через MQTT-протокол у режимі реального часу. Сервер Flask отримує ці повідомлення, перевіряє їх у списку зареєстрованих «відбитків» і вирішує, чи надати доступ. Для HTTP-запитів розроблено API, яке дозволяє тестувати систему, створювати сенсори та управляти доступами. Основні ендпоінти:
+ – /sensors/fingerprint для перевірки «відбитків» через HTTP.
+ – /sensors/ для керування сенсорами.
+     Дані про події доступу зберігаються в базі даних PostgreSQL, що дозволяє вести журнал доступу до лабораторій.
+1.2 Налаштування IoT-клієнта
+     
+     Ініціалізація MQTT: IoT-пристрій підключається до брокера Mosquitto, встановлює з’єднання та підписується на тему для прийому повідомлень.
+     Робота з Wi-Fi: IoT-пристрій автоматично перепідключається до мережі в разі втрати зв’язку.
+     Обробка MQTT повідомлень: Сервер отримує дані від IoT-пристрою та зберігає події доступу до бази даних. Якщо відбиток пальця не знайдено, доступ забороняється. Програмний код IoT-системи та код сервісу для роботи з MQTT наведено в додатку А.
+	Діаграму прецедентів IoT-клієнта, яка описує взаємодію користувача з програмною системою через пристрій, наведено на рисунку 1.
+
+
+Рисунок 1 – UML-діаграма прецедентів IoT-клієнта
+
+	Діаграму діяльності IoT-клієнта, яка описує процес роботи системи від генерації значень до їхньої реєстрації в БД, наведено на рисунку 2.
+
+Рисунок 2 – UML-діаграма діяльності IoT-клієнта
+     
+     Діаграму компонентів, яка описує організацію й взаємозв'язок програмних компонентів, представлених у коді, наведено на рисунку 3.
+     
+
+Рисунок 3 – UML-діаграма компонентів системи
+     
+     ВИСНОВКИ
+     
+     
+     В результаті виконання даної лабораторної роботи було розроблено IoT-клієнт для генерації та перевірки біометричних даних (відбитків пальців) співробітників лабораторії, який забезпечує автоматичне перепідключення IoT-пристрою до мереж та підтримує HTTP API для інтерактивної роботи з системою. Функції адміністрування протестовані за допомогою інструменту тестування Postman. 
+     Посилання на відео-захист: https://youtu.be/waWE_5CHjBE 
+     
+     
+     
+
+	 
+
+ДОДАТОК А
+Програмний код IoT-клієнта
+
+
+
+1 @sensors_bp.route("/fingerprint", methods=["POST"])
+2 def verify_fingerprint():
+3     data = request.json
+4     fingerprint = data.get("access_data")
+5     if not fingerprint:
+6         return jsonify({"error": "No fingerprint data provided"}), 400
+7     for user, registered_fingerprint in REGISTERED_FINGERPRINTS.items():
+8         if fingerprint == registered_fingerprint:
+9             return jsonify({"status": "approved", "user": user, "timestamp": datetime.now()}), 200
+10     return jsonify({"status": "denied", "reason": "Fingerprint not recognized"}), 403
+11 # IoT-симулятор для генерації даних сенсорів та передачі їх через MQTT
+12 import paho.mqtt.client as mqtt
+13 import json
+14 import random
+15 import time
+16 # Конфігурація MQTT
+17 BROKER = "localhost"
+18 PORT = 1883
+19 TOPIC = "iot/sensor_data"
+20 # Користувачі та лабораторії для генерації даних
+21 USERS = [1, 2, 3, 4]  # ID користувачів
+22 LABS = [1, 2, 3]      # ID лабораторій
+23 # Генерує випадковий вектор для відбитків пальців
+24 def generate_fingerprint():
+25     return [random.randint(0, 255) for _ in range(128)]  # 128-елементний вектор
+26 # Генерує дані сенсора та відправляє їх через MQTT
+27 def send_sensor_data(client):
+28     user_id = random.choice(USERS)
+29     lab_id = random.choice(LABS)
+30     fingerprint = generate_fingerprint()
+31     payload = {
+32         "user_id": user_id,
+33         "lab_id": lab_id,
+34         "fingerprint": fingerprint
+35     }
+36     try:
+37         client.publish(TOPIC, json.dumps(payload))
+38         print(f"Sent data: {payload}")
+39     except Exception as e:
+40         print(f"Failed to send data: {e}")
+41 # Запуск симулятора IoT
+42 def start_simulator():
+43     client = mqtt.Client()
+44     try:
+45         client.connect(BROKER, PORT, 60)
+46         print(f"Connected to MQTT broker at {BROKER}:{PORT}")
+47     except Exception as e:
+48         print(f"Failed to connect to MQTT broker: {e}")
+49         return
+50     client.loop_start()
+51     try:
+52         while True:
+53             send_sensor_data(client)
+54             time.sleep(5)  # Інтервал передачі даних (у секундах)
+55     except KeyboardInterrupt:
+56         print("Simulator stopped by user")
+57     finally:
+58         client.loop_stop()
+59         client.disconnect()
+60 if __name__ == "__main__":
+61     start_simulator()
+62 #сервер
+63 from flask import Flask, request, jsonify
+64 import paho.mqtt.client as mqtt
+65 from datetime import datetime
+66 app = Flask(__name__)
+67 REGISTERED_FINGERPRINTS = {
+68     "user1": "abc123xyz789",
+69     "user2": "def456uvw123"
+70 }
+71 BROKER = "localhost" 
+72 PORT = 1883  
+73 TOPIC = "sensors/fingerprint"  
+74 def on_message(client, userdata, msg):
+75     fingerprint = msg.payload.decode()
+76     print(f"Received fingerprint from MQTT: {fingerprint}")
+77     for user, registered_fingerprint in REGISTERED_FINGERPRINTS.items():
+78         if fingerprint == registered_fingerprint:
+79             print(f"Access granted for {user}")
+80             return
+81     print("Access denied: Fingerprint not recognized")
+82 def start_mqtt_client():
+83     client = mqtt.Client("FlaskMQTTServer")
+84     client.on_message = on_message
+85     client.connect(BROKER, PORT, 60)
+86     client.subscribe(TOPIC)
+87     client.loop_start()
+88 @app.route('/')
+89 def index():
+90     return "Flask Server with MQTT is running!"
+91 if __name__ == "__main__":
+92     start_mqtt_client()
+93     app.run(host="0.0.0.0", port=5000)
+94 # Модуль для обробки MQTT-повідомлень
+95 import paho.mqtt.client as mqtt
+96 import json
+97 from models import db, Sensor
+98 from datetime import datetime
+99 
+100 # Конфігурація MQTT
+101 BROKER = "localhost"
+102 PORT = 1883
+103 TOPIC = "iot/sensor_data"
+104 # Функція викликається при підключенні до брокера
+105 def on_connect(client, userdata, flags, rc):
+106     if rc == 0:
+107         print("MQTT connected successfully")
+108         client.subscribe(TOPIC)
+109         print(f"Subscribed to topic: {TOPIC}")
+110     else:
+111         print(f"Failed to connect to MQTT broker. Return code: {rc}")
+112 # Функція обробляє вхідні повідомлення з топіка
+113 def on_message(client, userdata, msg):
+114     try:
+115         # Розбір повідомлення
+116         payload = json.loads(msg.payload.decode("utf-8"))
+117         user_id = payload["user_id"]
+118         lab_id = payload["lab_id"]
+119         fingerprint = payload["fingerprint"]
+120         # Пошук відповідного сенсора в базі
+121         sensor = Sensor.query.filter_by(user_id=user_id, lab_id=lab_id).first()
+122         if not sensor:
+123             print(f"Sensor not found for user {user_id} in lab {lab_id}")
+124             return
+125         # Порівняння векторів відбитків
+126         if fingerprint != json.loads(sensor.fingerprint_data):
+127             print(f"Fingerprint mismatch for user {user_id}")
+128             return
+129         # Оновлення часу перевірки сенсора
+130         sensor.last_verified = datetime.utcnow()
+131         db.session.commit()
+132         print(f"Sensor verified successfully for user {user_id} in lab {lab_id}")
+133     except json.JSONDecodeError:
+134         print("Invalid JSON received")
+135     except Exception as e:
+136         print(f"Error processing message: {e}")
+137 # Запуск MQTT-клієнта
+138 def start_mqtt_client():
+139     client = mqtt.Client()
+140     client.on_connect = on_connect
+141     client.on_message = on_message
+142     try:
+143         client.connect(BROKER, PORT, 60)
+144         print(f"Connected to MQTT broker at {BROKER}:{PORT}")
+145         client.loop_start()
+146     except Exception as e:
+147         print(f"Failed to connect to MQTT broker: {e}")
