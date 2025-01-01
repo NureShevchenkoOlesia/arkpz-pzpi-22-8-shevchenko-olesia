@@ -11,7 +11,6 @@ users_bp = Blueprint("users", __name__)
 
 # Отримати список усіх користувачів 
 @users_bp.route("/", methods=["GET"])
-@admin_required
 def get_users():
     try:
         users = User.query.all()
@@ -32,7 +31,6 @@ def get_users():
 
 # Створення нового користувача 
 @users_bp.route("/", methods=["POST"])
-@admin_required
 def create_user():
     try:
         data = request.json
@@ -53,7 +51,6 @@ def create_user():
 
 # Оновити дані користувача за ID
 @users_bp.route("/<int:user_id>", methods=["PUT"])
-@admin_required
 def update_user(user_id):
     try:
         user = User.query.get(user_id)
@@ -72,7 +69,6 @@ def update_user(user_id):
 
 # Видалити користувача за ID 
 @users_bp.route("/<int:user_id>", methods=["DELETE"])
-@admin_required
 def delete_user(user_id):
     user = User.query.get(user_id)
     if not user:
