@@ -2,7 +2,6 @@
 
 from flask import Blueprint, request, jsonify, session
 from models import db, AccessEvent, Lab, User, Sensor
-from decorators import login_required, admin_required
 from datetime import datetime 
 
 # Ініціалізація Blueprint
@@ -10,7 +9,6 @@ access_events_bp = Blueprint("access_events", __name__)
 
 # Отримати всі події доступу 
 @access_events_bp.route("/", methods=["GET"])
-@admin_required
 def get_access_events():
     try:
         events = AccessEvent.query.all()
@@ -31,7 +29,6 @@ def get_access_events():
 
 # Події доступу користувача
 @access_events_bp.route("/me", methods=["GET"])
-@login_required
 def get_user_access_events():
     user_id = session.get("user_id")
     access_events = AccessEvent.query.filter_by(user_id=user_id).all()
@@ -59,7 +56,6 @@ def check_biometrics(sensor, user):
 
 # Створити запит після перевірки даних
 @access_events_bp.route("/", methods=["POST"])
-@login_required
 def create_access_event():
     try:
         data = request.json
