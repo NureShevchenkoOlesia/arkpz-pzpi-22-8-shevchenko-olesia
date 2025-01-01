@@ -2,14 +2,12 @@
 
 from flask import Blueprint, request, jsonify
 from models import db, Lab, LabStatus
-from decorators import login_required, admin_required
 
 # Ініціалізація Blueprint
 labs_bp = Blueprint("labs", __name__)
 
 # Отримати список усіх лабораторій
 @labs_bp.route("/", methods=["GET"])
-@admin_required
 def get_labs():
     try:
         labs = Lab.query.all()
@@ -28,7 +26,6 @@ def get_labs():
 
 # Додати нову лабораторію
 @labs_bp.route("/", methods=["POST"])
-@admin_required
 def create_lab():
     try:
         data = request.json
@@ -45,7 +42,6 @@ def create_lab():
 
 # Оновити дані лабораторії за ID
 @labs_bp.route("/<int:lab_id>", methods=["PUT"])
-@admin_required
 def update_lab(lab_id):
     try:
         lab = Lab.query.get(lab_id)
@@ -63,7 +59,6 @@ def update_lab(lab_id):
 
 # Змінити статус лабораторії
 @labs_bp.route("/<int:lab_id>/update_status", methods=["PATCH"])
-@admin_required
 def update_lab_status(lab_id):
     data = request.json
     lab = Lab.query.get_or_404(lab_id)
@@ -76,7 +71,6 @@ def update_lab_status(lab_id):
 
 # Видалити лабораторію за ID
 @labs_bp.route("/<int:lab_id>", methods=["DELETE"])
-@admin_required
 def delete_lab(lab_id):
     try:
         lab = Lab.query.get(lab_id)
