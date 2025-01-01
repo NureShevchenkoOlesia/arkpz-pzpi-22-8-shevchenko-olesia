@@ -2,7 +2,6 @@
 
 from flask import Blueprint, request, jsonify
 from models import db, Sensor
-from decorators import login_required, admin_required
 import datetime
 
 # Ініціалізація Blueprint
@@ -15,7 +14,6 @@ REGISTERED_FINGERPRINTS = {
 
 # Отримати список усіх сенсорів
 @sensors_bp.route("/", methods=["GET"])
-@admin_required
 def get_sensors():
     try:
         sensors = Sensor.query.all()
@@ -35,7 +33,6 @@ def get_sensors():
 
 # Створити новий сенсор
 @sensors_bp.route("/", methods=["POST"])
-@admin_required
 def create_sensor():
     try:
         data = request.json
@@ -53,7 +50,6 @@ def create_sensor():
 
 # Видалити сенсор за ID
 @sensors_bp.route("/<int:sensor_id>", methods=["DELETE"])
-@admin_required
 def delete_sensor(sensor_id):
     try:
         sensor = Sensor.query.get(sensor_id)
